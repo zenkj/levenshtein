@@ -29,7 +29,7 @@ function levenshtein_htmldiff(s1, s2) {
         return '<ins>'+html_escape(str)+'</ins>';
     }
 
-    var actions = levenshtein_diff(s1, s2);
+    var actions = levenshtein_combinediff(s1, s2);
 
     var html = [];
     for (var i=0; i<actions.length; i++) {
@@ -44,11 +44,39 @@ function levenshtein_htmldiff(s1, s2) {
             case 'insert':
                 html.push(insert_html(action[1]));
                 break;
+            case 'replace':
+                html.push(delete_html(action[1]));
+                html.push(insert_html(action[2]));
+                break;
         }
     }
 
     return html.join('');
 }
+
+function levenshtein_combinediff(s1, s2) {
+    var actions = levenshtein_diff(s1, s2);
+    var combined = [];
+    var currstate = '';
+    var currvalue = '';
+    for (var i=0; i<actions.length; i++) {
+        var action = actions[i];
+        if (action[0] == currstate) {
+            currvalue += action[1];
+        } else {
+            if (currvalue.length > 0) {
+                combined.push([currstate, currvalue]);
+            }
+            currstate = action[0];
+            currvalue = action[1];
+        }
+    }
+
+    combined.push([currstate, currvalue]);
+
+    return combined;
+}
+
 
 function levenshtein_diff(s1, s2) {
     var len1 = s1.length;
@@ -121,8 +149,7 @@ function levenshtein_diff(s1, s2) {
             if (d1 == d2) {
                 actions.push(['equal', s1[x1]]);
             } else {
-                actions.push(['delete', s1[x1]]);
-                actions.push(['insert', s2[y1]]);
+                actions.push(['replace', s1[x1], s2[y1]]);
             }
         } else if (x2 > x1) {
             actions.push(['delete', s1[x1]]);
@@ -131,25 +158,7 @@ function levenshtein_diff(s1, s2) {
         }
     }
 
-    var combined = [];
-    var currstate = '';
-    var currvalue = '';
-    for (var i=0; i<actions.length; i++) {
-        var action = actions[i];
-        if (action[0] == currstate) {
-            currvalue += action[1];
-        } else {
-            if (currvalue.length > 0) {
-                combined.push([currstate, currvalue]);
-            }
-            currstate = action[0];
-            currvalue = action[1];
-        }
-    }
-
-    combined.push([currstate, currvalue]);
-
-    return combined;
+    return actions;
 }
 
 function levenshtein_distance(s1, s2) {
