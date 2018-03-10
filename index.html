@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+    <head>
+        <title>levenshtein difference</title>
+        <style>
+            del { background: red; }
+            ins { background: green; }
+        </style>
+    </head>
+    <body>
+        <input id="oldstr" type="text" placeholder="please input old string">
+        <input id="newstr" type="text" placeholder="please input new string">
+        <div>
+            <span>Distance: </span>
+            <span id="distance"></span>
+        </div>
+        <div id="diff"></div>
+        <script src="/static/js/levenshtein.js"></script>
+        <script>
+            var oldstr = document.getElementById('oldstr');
+            var newstr = document.getElementById('newstr');
+            var distance = document.getElementById('distance');
+            var diff = document.getElementById('diff');
+            function onchange() {
+                distance.innerHTML = levenshtein_distance(oldstr.value, newstr.value);
+                diff.innerHTML = levenshtein_htmldiff(oldstr.value, newstr.value);
+            }
+            oldstr.addEventListener('keyup', onchange);
+            newstr.addEventListener('keyup', onchange);
+        </script>
+    </body>
+</html>
