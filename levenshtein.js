@@ -1,3 +1,13 @@
+var DIFF_DELETE = -1;
+var DIFF_EQUAL = 0;
+var DIFF_INSERT = 1;
+var DIFF_REPLACE = 2;
+
+var DIFF_NODIFF = 0;
+var DIFF_CONFLICT = 1;
+
+// s1: old string
+// s2: new string
 function levenshtein_htmldiff(s1, s2) {
     function html_escape(str) {
         return str.split('').map(function(ch) {
@@ -35,16 +45,16 @@ function levenshtein_htmldiff(s1, s2) {
     for (var i=0; i<actions.length; i++) {
         var action = actions[i];
         switch(action[0]) {
-            case 'equal':
+            case DIFF_EQUAL:
                 html.push(equal_html(action[1]));
                 break;
-            case 'delete':
+            case DIFF_DELETE:
                 html.push(delete_html(action[1]));
                 break;
-            case 'insert':
+            case DIFF_INSERT:
                 html.push(insert_html(action[1]));
                 break;
-            case 'replace':
+            case DIFF_REPLACE:
                 html.push(delete_html(action[1]));
                 html.push(insert_html(action[2]));
                 break;
@@ -54,36 +64,50 @@ function levenshtein_htmldiff(s1, s2) {
     return html.join('');
 }
 
+// s1: old string
+// s2: new string
 function levenshtein_combinediff(s1, s2) {
     var actions = levenshtein_diff(s1, s2);
+    return combine_action(actions);
+}
+
+function combine_action(actions, begin, end) {
+    function combine(action1, action2) {
+        for (var i=1; i<action1.length; i++)
+            action1[i] += action2[i];
+    }
+
+    begin = typeof begin === 'undefined' ? 0 : begin;
+    end = typeof end === 'undefined' ? actions.length : end;
+
     var combined = [];
-    var currstate = '';
-    var currvalue = '';
-    for (var i=0; i<actions.length; i++) {
+    var i, curr;
+
+    for (i=begin+1, curr=actions[begin]; i<end; i++) {
         var action = actions[i];
-        if (action[0] == currstate) {
-            currvalue += action[1];
+        if (action[0] == curr[0]) {
+            combine(curr, action);
         } else {
-            if (currvalue.length > 0) {
-                combined.push([currstate, currvalue]);
+            if (curr[1].length > 0) {
+                combined.push(curr);
             }
-            currstate = action[0];
-            currvalue = action[1];
+            curr = action;
         }
     }
 
-    combined.push([currstate, currvalue]);
+    combined.push(curr);
 
     return combined;
 }
 
-
+// s1: old string
+// s2: new string
 function levenshtein_diff(s1, s2) {
     var len1 = s1.length;
     var len2 = s2.length;
     if (len1 == 0 && len2 == 0) return [];
-    if (len1 == 0) return [['insert',s2]];
-    if (len2 == 0) return [['delete',s1]];
+    if (len1 == 0) return s2.split('').map(function(ch){return [DIFF_INSERT,ch];});
+    if (len2 == 0) return s1.split('').map(function(ch){return [DIFF_DELETE,ch];});
 
     var distance_matrix = [];
     var diff_matrix = [];
@@ -147,20 +171,22 @@ function levenshtein_diff(s1, s2) {
         d2 = path[i+1][2];
         if (x2>x1 && y2>y1) {
             if (d1 == d2) {
-                actions.push(['equal', s1[x1]]);
+                actions.push([DIFF_EQUAL, s1[x1]]);
             } else {
-                actions.push(['replace', s1[x1], s2[y1]]);
+                actions.push([DIFF_REPLACE, s1[x1], s2[y1]]);
             }
         } else if (x2 > x1) {
-            actions.push(['delete', s1[x1]]);
+            actions.push([DIFF_DELETE, s1[x1]]);
         } else if (y2 > y1) {
-            actions.push(['insert', s2[y1]]);
+            actions.push([DIFF_INSERT, s2[y1]]);
         }
     }
 
     return actions;
 }
 
+// s1: old string
+// s2: new string
 function levenshtein_distance(s1, s2) {
     var len1 = s1.length;
     var len2 = s2.length;
@@ -183,4 +209,66 @@ function levenshtein_distance(s1, s2) {
         v1 = tmp;
     }
     return v0[len2];
+}
+
+// 3-way merge of two strings based on levenshtein algorithm
+/*
+ E: equal
+ I: insert
+ D: delete
+ R: replace
+
+      E2   I2   D2   R2
+ E1    1    2    2    2
+ I1    1    ?1   1    1
+ D1    1    2    1    x
+ R1    1    2    x    ?2
+ 
+ ?1: I1==I2: 1; I1!=I2: x
+ ?2: R1==R2: 1; R1!=R2: x
+*/
+function levenshtein_merge3(origin, s1, s2) {
+    function combine_insert(actions) {
+        var combined = [];
+        var i, curr=null;
+
+        for (i=0; i<actions.length; i++) {
+            var action = actions[i];
+            if (action[0] == DIFF_INSERT) {
+                if (curr == null)
+                    curr = action;
+                else
+                    curr[1] += action[1];
+            } else {
+                if (curr != null) {
+                    combined.push(curr);
+                    curr = null;
+                }
+                combined.push(action);
+            }
+        }
+
+        if (curr != null) combined.push(curr);
+        return combined;
+    }
+
+    var diffs1 = levenshtein_diff(origin, s1);
+    var diffs2 = levenshtein_diff(origin, s2);
+
+    diffs1 = combine_insert(diffs1);
+    diffs2 = combine_insert(diffs2);
+
+    var len0 = origin.length;
+    var len1 = diffs1.length;
+    var len2 = diffs2.length;
+    var i0 = 0;
+    var i1 = 0;
+    var i2 = 0;
+    
+
+    while (i1<len1 && i2<len2) {
+        var diff1 = diffs1[i1];
+        var diff2 = diffs2[i2];
+        // TODO
+    }
 }
