@@ -212,21 +212,6 @@ function levenshtein_distance(s1, s2) {
 }
 
 // 3-way merge of two strings based on levenshtein algorithm
-/*
- E: equal
- I: insert
- D: delete
- R: replace
-
-      E2   I2   D2   R2
- E1    1    2    2    2
- I1    1    ?1   1    1
- D1    1    2    1    x
- R1    1    2    x    ?2
- 
- ?1: I1==I2: 1; I1!=I2: x
- ?2: R1==R2: 1; R1!=R2: x
-*/
 function levenshtein_merge3(origin, s1, s2) {
     function combine_insert(actions) {
         var combined = [];
@@ -252,6 +237,21 @@ function levenshtein_merge3(origin, s1, s2) {
         return combined;
     }
 
+    function add_result(result, action) {
+        var a1 = action[0];
+        if (a1 == DIFF_EQUAL) {
+            result.push([DIFF_NODIFF, action[1]]);
+        } else if (a1 == DIFF_INSERT) {
+            result.push([DIFF_NODIFF, action[1]]);
+        } else if (a1 == DIFF_DELETE) {
+            // Do nothing
+        } else if (a1 == DIFF_REPLACE) {
+            result.push([DIFF_NODIFF, action[2]]);
+        } else {
+            console.log('error');
+        }
+    }
+
     var diffs1 = levenshtein_diff(origin, s1);
     var diffs2 = levenshtein_diff(origin, s2);
 
@@ -264,11 +264,84 @@ function levenshtein_merge3(origin, s1, s2) {
     var i0 = 0;
     var i1 = 0;
     var i2 = 0;
-    
 
+    var result_actions = [];
+    
+    /*
+     E: equal
+     I: insert
+     D: delete
+     R: replace
+
+          E2   I2   D2   R2
+     E1    2    2    2    2
+     I1    1    ?1   1    1
+     D1    1    2    1    x
+     R1    1    2    x    ?2
+     
+     ?1: I1==I2: 1; I1!=I2: x
+     ?2: R1==R2: 1; R1!=R2: x
+    */
     while (i1<len1 && i2<len2) {
         var diff1 = diffs1[i1];
         var diff2 = diffs2[i2];
-        // TODO
+        var a1 = diff1[0];
+        var a2 = diff2[0];
+        if (a1 == DIFF_EQUAL) {
+            add_result(result_actions, diff2);
+            i1++;
+            i2++;
+        } else if (a1 == DIFF_INSERT) {
+            if (a2 != DIFF_INSERT) {
+                add_result(result_actions, diff1);
+                i1++;
+            } else {
+                if (diff1[1] == diff2[1]) {
+                    add_result(result_actions, diff1);
+                } else {
+                    result_actions.push([DIFF_CONFLICT, diff1[1], diff2[1]]);
+                }
+                i1++;
+                i2++;
+            }
+        } else if (a1 == DIFF_DELETE) {
+            if (a2 == DIFF_EQUAL || a2 == DIFF_DELETE) {
+                add_result(result_actions, diff1);
+                i1++;
+                i2++;
+            } else if (a2 == DIFF_INSERT) {
+                add_result(result_actions, diff2);
+                i2++;
+            } else if (a2 == DIFF_REPLACE) {
+                result_actions.push([DIFF_CONFLICT, diff2[1], diff2[2]]);
+                i1++;
+                i2++;
+            }
+        } else if (a1 == DIFF_REPLACE) {
+            if (a2 == DIFF_EQUAL) {
+                add_result(result_actions, diff1);
+                i1++;
+                i2++;
+            } else if (a2 == DIFF_INSERT) {
+                add_result(result_actions, diff2);
+                i2++;
+            } else if (a2 == DIFF_DELETE) {
+                result_actions.push([DIFF_CONFLICT, diff1[1], diff1[2]]);
+                i1++;
+                i2++;
+            } else if (a2 == DIFF_REPLACE) {
+                if (diff1[2] == diff2[2]) {
+                    add_result(result_actions, diff1);
+                } else {
+                    result_actions.push([DIFF_CONFLICT, diff1[2], diff2[2]]);
+                }
+                i1++;
+                i2++;
+            }
+        } else {
+            console.log('error');
+        }
     }
+
+    return combine_action(result_actions);
 }
